@@ -3,18 +3,19 @@ const crypto = require('crypto');
 const app = express();
 app.use(express.json());
 
-// =================== CONFIGURATION ===================
-// 1. Put your exact LootLabs or Linkvertise link prefixes here (include the "url=" part)
-const AD_GATE_1 = "https://loot-link.com/s?YOUR_AD_ID_1&url="; 
-const AD_GATE_2 = "https://loot-link.com/s?YOUR_AD_ID_2&url="; 
+// =================== LINKVERTISE CONFIGURATION ===================
+const LINKVERTISE_USER_ID = "7599156"; // Put your 6-7 digit User ID here
+const GITHUB_PAGES_URL = "https://rxscript.github.io/";
+// =================================================================
 
-// 2. Put your live GitHub Pages URL here (Ensure it ends with a slash)
-const GITHUB_PAGES_URL = "https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/";
-// =====================================================
+const activeTokens = new Map();       
+const userProgress = new Map();       
+const authenticatedHWIDs = new Map();   
 
-const activeTokens = new Map();       // token -> { hwid, step, expires }
-const userProgress = new Map();       // hwid -> completedStepsCount
-const authenticatedHWIDs = new Map();   // hwid -> expirationTime
+// Helper function to safely encode URLs to Base64 for Linkvertise
+function encodeBase64(text) {
+    return Buffer.from(text).toString('base64');
+}
 
 // Route for Roblox script to grab links
 app.get('/get-link', (req, res) => {
@@ -33,11 +34,16 @@ app.get('/get-link', (req, res) => {
     if (completed === 0) {
         activeTokens.set(token, { hwid, step: 1, expires: Date.now() + 600000 });
         const destination = `${GITHUB_PAGES_URL}?token=${token}`;
-        targetAdLink = `${AD_GATE_1}${encodeURIComponent(destination)}`;
+        
+        // Linkvertise Checkpoint 1 Dynamic Link Generation
+        targetAdLink = `https://link-to.net/${LINKVERTISE_USER_ID}/${Math.floor(Math.random() * 99999)}/dynamic?r=${encodeBase64(destination)}`;
+        
     } else if (completed === 1) {
         activeTokens.set(token, { hwid, step: 2, expires: Date.now() + 600000 });
         const destination = `${GITHUB_PAGES_URL}?token=${token}`;
-        targetAdLink = `${AD_GATE_2}${encodeURIComponent(destination)}`;
+        
+        // Linkvertise Checkpoint 2 Dynamic Link Generation
+        targetAdLink = `https://link-to.net/${LINKVERTISE_USER_ID}/${Math.floor(Math.random() * 99999)}/dynamic?r=${encodeBase64(destination)}`;
     }
 
     res.json({ status: "checkpoint", link: targetAdLink, currentStep: completed + 1 });
@@ -63,13 +69,13 @@ app.post('/verify-token', (req, res) => {
         activeTokens.set(nextToken, { hwid, step: 2, expires: Date.now() + 600000 });
         
         const destination = `${GITHUB_PAGES_URL}?token=${nextToken}`;
-        const nextAdLink = `${AD_GATE_2}${encodeURIComponent(destination)}`;
+        const nextAdLink = `https://link-to.net/${LINKVERTISE_USER_ID}/${Math.floor(Math.random() * 99999)}/dynamic?r=${encodeBase64(destination)}`;
 
         return res.json({ success: true, completedAll: false, nextLink: nextAdLink });
     }
 
     if (step === 2 && currentCompleted === 1) {
-        authenticatedHWIDs.set(hwid, Date.now() + 24 * 60 * 60 * 1000); // 24 Hour Key
+        authenticatedHWIDs.set(hwid, Date.now() + 24 * 60 * 60 * 1000); 
         userProgress.delete(hwid);
         activeTokens.delete(token);
         return res.json({ success: true, completedAll: true });
@@ -87,4 +93,4 @@ app.get('/check-key', (req, res) => {
     res.json({ authorized: false });
 });
 
-app.listen(process.env.PORT || 3000, () => console.log("Server running!"));
+app.listen(process.env.PORT || 3000, () => console.log("Linkvertise key system server running!"));
