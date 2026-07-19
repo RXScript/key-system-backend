@@ -9,20 +9,19 @@ app.use(cors());
 // =================== CONFIGURATION ===================
 const GITHUB_PAGES_URL = "https://rxscript.github.io/";
 
-// 1. LINKVERTISE
 const LINKVERTISE_USER_ID = "7599156"; 
-
-// 2. LOOTLABS 
 const LOOTLABS_CP1 = "https://loot-link.com/s?yKatk89I&url=";
-const LOOTLABS_CP2 = "https://loot-link.com/s?yKatk89I&url="; // Reminder: Make a 2nd link in LootLabs later!
-
-// 3. WORK.INK 
+const LOOTLABS_CP2 = "https://loot-link.com/s?yKatk89I&url="; 
 const WORKINK_URL = "https://work.ink/2KRk/key-system?url=";
 // =====================================================
 
 const activeTokens = new Map();       
 const userProgress = new Map();       
 const generatedKeys = new Map(); 
+
+// NEW: Trackers to survive page refreshes and bypass ads for active users
+const completedTokens = new Map();
+const activeUserKeys = new Map();
 
 const encodeBase64 = (text) => Buffer.from(text).toString('base64');
 
@@ -45,8 +44,23 @@ app.get('/get-link', (req, res) => {
     const { hwid, provider } = req.query;
     if (!hwid) return res.status(400).json({ error: "Missing HWID" });
     
-    const safeProvider = ['linkvertise', 'workink', 'lootlabs'].includes(provider) ? provider : 'linkvertise';
+    // NEW: Check if this user ALREADY has a valid key
+    const existingKey = activeUserKeys.get(hwid);
+    if (existingKey) {
+        const keyData = generatedKeys.get(existingKey);
+        if (keyData && Date.now() < keyData.expires) {
+            // Bypass ads entirely and generate a direct token to their key page
+            const bypassToken = crypto.randomBytes(16).toString('hex');
+            completedTokens.set(bypassToken, { key: existingKey, expires: keyData.expires });
+            return res.json({ 
+                status: "checkpoint", 
+                link: `${GITHUB_PAGES_URL}?token=${bypassToken}`, 
+                currentStep: 2 
+            });
+        }
+    }
 
+    const safeProvider = ['linkvertise', 'workink', 'lootlabs'].includes(provider) ? provider : 'linkvertise';
     const completed = userProgress.get(hwid) || 0;
     const token = crypto.randomBytes(16).toString('hex');
     const step = completed + 1;
@@ -59,8 +73,16 @@ app.get('/get-link', (req, res) => {
 
 app.post('/verify-token', (req, res) => {
     const { token } = req.body;
-    const tokenData = activeTokens.get(token);
 
+    // NEW: Check if they just refreshed the page with an already completed token
+    if (completedTokens.has(token)) {
+        const data = completedTokens.get(token);
+        if (Date.now() < data.expires) {
+            return res.json({ success: true, completedAll: true, key: data.key, expires: data.expires });
+        }
+    }
+
+    const tokenData = activeTokens.get(token);
     if (!tokenData || Date.now() > tokenData.expires) {
         return res.status(400).json({ success: false, message: "Invalid or expired token." });
     }
@@ -83,13 +105,16 @@ app.post('/verify-token', (req, res) => {
         userProgress.delete(hwid);
         activeTokens.delete(token);
         
-        // Generate the final text key with the RX- prefix
         const finalKey = "RX-" + crypto.randomBytes(4).toString('hex');
+        const expireTime = Date.now() + 16 * 60 * 60 * 1000;
         
-        // Lock the key to the user's HWID and set it to expire in 16 HOURS
-        generatedKeys.set(finalKey, { hwid: hwid, expires: Date.now() + 16 * 60 * 60 * 1000 });
+        generatedKeys.set(finalKey, { hwid: hwid, expires: expireTime });
+        activeUserKeys.set(hwid, finalKey); // Save mapping for ad-bypass
         
-        return res.json({ success: true, completedAll: true, key: finalKey });
+        // Save token to survive page refreshes
+        completedTokens.set(token, { key: finalKey, expires: expireTime });
+        
+        return res.json({ success: true, completedAll: true, key: finalKey, expires: expireTime });
     }
 
     return res.status(400).json({ success: false, message: "Out of order execution." });
@@ -99,7 +124,6 @@ app.get('/validate-key', (req, res) => {
     const { hwid, key } = req.query;
     const keyData = generatedKeys.get(key);
     
-    // Checks if the key exists, belongs to the exact HWID that requested it, and hasn't expired
     if (keyData && keyData.hwid === hwid && Date.now() < keyData.expires) {
         return res.json({ valid: true });
     }
