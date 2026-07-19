@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
+const cors = require('cors');
 const app = express();
-const cors = require('cors'); // Helps prevent connection errors from GitHub
 
 app.use(express.json());
 app.use(cors()); 
@@ -9,17 +9,20 @@ app.use(cors());
 // =================== CONFIGURATION ===================
 const GITHUB_PAGES_URL = "https://rxscript.github.io/";
 
+// 1. LINKVERTISE
 const LINKVERTISE_USER_ID = "7599156"; 
 
+// 2. LOOTLABS 
 const LOOTLABS_CP1 = "https://loot-link.com/s?yKatk89I&url=";
-const LOOTLABS_CP2 = "https://loot-link.com/s?yKatk89I&url="; // We recommend changing this ID later!
+const LOOTLABS_CP2 = "https://loot-link.com/s?yKatk89I&url="; // Reminder: Make a 2nd link in LootLabs later!
 
+// 3. WORK.INK 
 const WORKINK_URL = "https://work.ink/2KRk/key-system?url=";
 // =====================================================
 
 const activeTokens = new Map();       
 const userProgress = new Map();       
-const generatedKeys = new Map(); // NEW: Stores the final copy-paste keys
+const generatedKeys = new Map(); 
 
 const encodeBase64 = (text) => Buffer.from(text).toString('base64');
 
@@ -44,8 +47,6 @@ app.get('/get-link', (req, res) => {
     
     const safeProvider = ['linkvertise', 'workink', 'lootlabs'].includes(provider) ? provider : 'linkvertise';
 
-    // If they already generated a key recently, just give them a fresh link anyway 
-    // so they don't get stuck if they lost the key.
     const completed = userProgress.get(hwid) || 0;
     const token = crypto.randomBytes(16).toString('hex');
     const step = completed + 1;
@@ -82,11 +83,11 @@ app.post('/verify-token', (req, res) => {
         userProgress.delete(hwid);
         activeTokens.delete(token);
         
-        // NEW: Generate the final text key (e.g., RX-a1b2c3d4)
+        // Generate the final text key with the RX- prefix
         const finalKey = "RX-" + crypto.randomBytes(4).toString('hex');
         
-        // Store it for 24 hours
-        generatedKeys.set(finalKey, { hwid: hwid, expires: Date.now() + 24 * 60 * 60 * 1000 });
+        // Lock the key to the user's HWID and set it to expire in 16 HOURS
+        generatedKeys.set(finalKey, { hwid: hwid, expires: Date.now() + 16 * 60 * 60 * 1000 });
         
         return res.json({ success: true, completedAll: true, key: finalKey });
     }
@@ -94,11 +95,11 @@ app.post('/verify-token', (req, res) => {
     return res.status(400).json({ success: false, message: "Out of order execution." });
 });
 
-// NEW ROUTE: Roblox script checks if the typed key is valid
 app.get('/validate-key', (req, res) => {
     const { hwid, key } = req.query;
     const keyData = generatedKeys.get(key);
     
+    // Checks if the key exists, belongs to the exact HWID that requested it, and hasn't expired
     if (keyData && keyData.hwid === hwid && Date.now() < keyData.expires) {
         return res.json({ valid: true });
     }
