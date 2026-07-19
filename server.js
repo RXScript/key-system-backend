@@ -8,7 +8,7 @@ const GITHUB_PAGES_URL = "https://rxscript.github.io/";
 
 // 1. LINKVERTISE
 const LINKVERTISE_USER_ID = "7599156"; 
-https://loot-link.com/s?
+
 // 2. LOOTLABS (Requires different ad IDs for each checkpoint)
 const LOOTLABS_CP1 = "https://loot-link.com/s?yKatk89I&url=";
 const LOOTLABS_CP2 = "https://loot-link.com/s?yKatk89I&url=";
